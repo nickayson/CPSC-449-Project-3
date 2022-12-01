@@ -1,7 +1,7 @@
 import collections
 import dataclasses
 import sqlite3
-import textwrap
+import textwrap 
 import random
 
 import databases
@@ -26,21 +26,40 @@ class Guess:
     game_id: str
 
 
-async def _connect_db():
-    database = databases.Database(app.config["DATABASES"]["URL"])
+async def _connect_primary_db():
+    database = databases.Database(app.config["DATABASES"]["PRIMARY"])
     await database.connect()
     return database
 
+def _get_primary_db():
+    if not hasattr(g, "sqlite_primary_db"):
+        g.sqlite_primary_db = _connect_primary_db()
+    return g.sqlite_primary_db
 
-def _get_db():
+async def _connect_db(db_val):
+    if db_val:
+        data = []
+        data.append(databases.Database(app.config["DATABASES"]["SECONDARY"]))
+        data.append(databases.Database(app.config["DATABASES"]["THIRD"]))
+        database = random.choice(data)
+        await database.connect()
+        return database
+
+def _get_db(db_val):
     if not hasattr(g, "sqlite_db"):
-        g.sqlite_db = _connect_db()
+        g.sqlite_db = _connect_db(db_val)
     return g.sqlite_db
 
 
 @app.teardown_appcontext
 async def close_connection(exception):
     db = getattr(g, "_sqlite_db", None)
+    if db is not None:
+        await db.disconnect()
+
+@app.teardown_appcontext
+async def close_connection(exception):
+    db = getattr(g, "_sqlite_primary_db", None)
     if db is not None:
         await db.disconnect()
 
@@ -55,7 +74,7 @@ async def game():
 @app.route("/game/new", methods=["POST"])
 #@validate_request(Game)
 async def create_game():
-    db = await _get_db()
+    # db = await _get_db()
 
     username = request.authorization["username"]
 
@@ -72,15 +91,19 @@ async def create_game():
     #    abort(409, e)
 
     # Get a random word for the secret word
+    db_write = await _get_primary_db()
+    db_read = await  _get_db('sec')
+    app.logger.debug(db_read)
     rand = random.randint(1, 2309)
-    secretWord = await db.fetch_one("SELECT word FROM answers WHERE answer_id = :answer_id"
+    secretWord = await db_read.fetch_one("SELECT word FROM answers WHERE answer_id = :answer_id"
     , values={"answer_id": rand})
+
 
     # inserts game into db
     test = str(uuid.uuid4())
     game = {'game_id': test, "username": username, 'guessAmount': 6, 'secretWord': secretWord[0]}
     try:
-        id = await db.execute(
+        id = await db_write.execute(
             """
             INSERT INTO game(game_id, username, guessAmount, secretWord)
             VALUES(:game_id, :username, :guessAmount, :secretWord);
@@ -94,12 +117,14 @@ async def create_game():
 # Get all games for a certain user
 @app.route("/game/getGames", methods=["GET"])
 async def get_games():
-    db = await _get_db()
+    # db = await _get_db()
+    db_write = await _get_primary_db()
+    db_read = await  _get_db('sec')
 
     username = request.authorization["username"]
 
     # gets all current games for that user
-    games = await db.fetch_all("SELECT game_id, finished FROM game WHERE username = :username and finished = False"
+    games = await db_read.fetch_all("SELECT game_id, finished FROM game WHERE username = :username and finished = False"
     , values={"username": username})
     listOfGames = []
     if games:
@@ -141,7 +166,9 @@ async def evaluate_word(secret_word, guess_word):
 @app.route("/game/makeGuess", methods=["POST"])
 @validate_request(Guess)
 async def make_guess(data):
-    db = await _get_db()
+    # db = await _get_db()
+    db_write = await _get_primary_db()
+    db_read = await  _get_db('sec')
     guess = dataclasses.asdict(data)
 
     username = request.authorization["username"]
@@ -151,7 +178,7 @@ async def make_guess(data):
 
     secretWord = None
 
-    game = await db.fetch_one("SELECT secretWord, finished, guessAmount FROM game WHERE game_id = :game_id AND username = :username"
+    game = await db_read.fetch_one("SELECT secretWord, finished, guessAmount FROM game WHERE game_id = :game_id AND username = :username"
     , values={"game_id": guess["game_id"], "username": username})
     if (game):
         # game is not finished
@@ -171,16 +198,16 @@ async def make_guess(data):
     # TODO
     # Check the guess if valid
 
-    value = await db.fetch_one("SELECT EXISTS(SELECT 1 FROM validGuess WHERE word= :guessWord)"
+    value = await db_read.fetch_one("SELECT EXISTS(SELECT 1 FROM validGuess WHERE word= :guessWord)"
     , values={"guessWord": guessWord})
-    value2 = await db.fetch_one("SELECT EXISTS(SELECT 1 FROM answers WHERE word= :guessWord)"
+    value2 = await db_read.fetch_one("SELECT EXISTS(SELECT 1 FROM answers WHERE word= :guessWord)"
     , values={"guessWord": guessWord})
     if (value[0] or value2[0] or guessWord == secretWord):
 
         # add guess to guess table and decrement guess amount
         guess = {'guess_word': guessWord, 'game_id': game_id}
         try:
-            id = await db.execute(
+            id = await db_write.execute(
                 """
                 INSERT INTO guess(game_id, guess_word)
                 VALUES(:game_id, :guess_word);
@@ -192,7 +219,7 @@ async def make_guess(data):
 
         payload = {"guessAmount": game[2] - 1,"game_id": game_id}
         try:
-            id = await db.execute(
+            id = await db_write.execute(
                 """
                 UPDATE game SET guessAmount = :guessAmount WHERE game_id = :game_id
                 """,
@@ -204,7 +231,7 @@ async def make_guess(data):
         if (guessWord == secretWord or game[2] == 0):
             payload = {"finished": True,"game_id": game_id}
             try:
-                id = await db.execute(
+                id = await db_write.execute(
                     """
                     UPDATE game SET finished = :finished WHERE game_id = :game_id
                     """,
@@ -226,7 +253,7 @@ async def make_guess(data):
             }
 
         # Gets the actual past guesses/ guess words as "guess"
-        guesses = await db.fetch_all("SELECT guess_word as guess FROM guess WHERE game_id = :game_id"
+        guesses = await db_read.fetch_all("SELECT guess_word as guess FROM guess WHERE game_id = :game_id"
         , values={"game_id": game_id})
 
         # get all past results for each guess
@@ -261,7 +288,9 @@ async def make_guess(data):
 # Get the status of a current game
 @app.route("/game/gameStatus/<string:game_id>", methods=["GET"])
 async def get_status(game_id):
-    db = await _get_db()
+    # db = await _get_db()
+    db_write = await _get_primary_db()
+    db_read = await  _get_db('sec')
 
     username = request.authorization["username"]
 
@@ -272,7 +301,7 @@ async def get_status(game_id):
 
     # Gets the number of guesses left for the game that user started
     numOfGuesses = 0
-    game = await db.fetch_one("SELECT guessAmount, secretWord FROM game WHERE game_id = :game_id AND username = :username"
+    game = await db_read.fetch_one("SELECT guessAmount, secretWord FROM game WHERE game_id = :game_id AND username = :username"
     , values={"game_id": game_id, "username": username})
     if (game):
         numOfGuesses = game[0]
@@ -280,7 +309,7 @@ async def get_status(game_id):
         abort(404)
 
     # Gets the actual past guesses/ guess words as "guess"
-    guesses = await db.fetch_all("SELECT guess_word as guess FROM guess WHERE game_id = :game_id"
+    guesses = await db_read.fetch_all("SELECT guess_word as guess FROM guess WHERE game_id = :game_id"
     , values={"game_id": game_id})
 
     # get all past results for each guess
