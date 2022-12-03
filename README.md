@@ -13,7 +13,7 @@ Maria Ortega
 Section-01         
 
 
-# Welcome to Project 2
+# Welcome to Project 3
 
 ## Set-Up Instructions:
 
