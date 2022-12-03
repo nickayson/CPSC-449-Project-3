@@ -39,6 +39,7 @@ def _get_primary_db():
 async def _connect_db(db_val):
     if db_val:
         data = []
+        data.append(databases.Database(app.config["DATABASES"]["PRIMARY"]))
         data.append(databases.Database(app.config["DATABASES"]["SECONDARY"]))
         data.append(databases.Database(app.config["DATABASES"]["THIRD"]))
         database = random.choice(data)

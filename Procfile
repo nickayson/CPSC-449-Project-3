@@ -1,4 +1,5 @@
 users_service: hypercorn users_service --reload --debug --bind users_service.local.gd:$PORT --access-logfile - --error-logfile - --log-level DEBUG
+leaderboard_service: hypercorn leaderboard_service --reload --debug --bind leaderboard_service.local.gd:$PORT --access-logfile - --error-logfile - --log-level DEBUG
 
 primary: ./bin/litefs -config ./etc/primary.yml
 secondary: ./bin/litefs -config ./etc/secondary.yml

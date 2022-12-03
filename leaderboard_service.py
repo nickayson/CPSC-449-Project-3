@@ -7,34 +7,118 @@ import random
 import databases
 import toml
 import uuid
+import redis
 
 from quart import Quart, g, request, abort
 from quart_schema import QuartSchema, RequestSchemaValidationError, validate_request
 
 app = Quart(__name__)
 QuartSchema(app)
-
-app.config.from_file(f"./etc/{__name__}.toml", toml.load)
+        
+# Initialize redis client
+redisClient = redis.StrictRedis(host='localhost', port=6379, db=0, charset='utf-8', decode_responses=True)
 
 @dataclasses.dataclass
-class Guess:
-    guess: str
+class LeaderboardInfo:
     game_id: str
+    username: str
+    num_guesses: int
+    win: bool
     
-async def _connect_db():
-    database = databases.Database(app.config["DATABASES"]["URL"])
-    await database.connect()
-    return database
+# Handle bad routes/errors 
+@app.errorhandler(404)
+def not_found(e):
+    return {"error": "404 The resource could not be found"}, 404
 
+@app.errorhandler(RequestSchemaValidationError) 
+def bad_request(e):
+    return {"error": str(e.validation_error)}, 400
 
-def _get_db():
-    if not hasattr(g, "sqlite_db"):
-        g.sqlite_db = _connect_db()
-    return g.sqlite_db
+@app.errorhandler(409)
+def conflict(e):
+    return {"error": str(e)}, 409    
 
+# connect to reddis db at port 6379
+def get_redis_db():
+    r = redis.Redis(host='localhost', port=6379, db=0)
+    return r
 
-@app.teardown_appcontext
-async def close_connection(exception):
-    db = getattr(g, "_sqlite_db", None)
-    if db is not None:
-        await db.disconnect()
+# Keep track of the score based on if user won the game
+def get_score(guesses, win):
+    if not win:
+        return 0
+    elif guesses == 1:
+        return 6
+    elif guesses == 2:
+        return 5
+    elif guesses == 3:
+        return 4
+    elif guesses == 4:
+        return 3
+    elif guesses == 5:
+        return 2
+    elif guesses == 6:
+        return 1
+    else:
+        return 0
+
+# Results completely seperated from other services
+@app.route("/results/", methods=["POST"])
+@validate_request(LeaderboardInfo)
+async def score(data: LeaderboardInfo):
+    
+    game_data = dataclasses.asdict(data)
+    
+    game_id = game_data["game_id"]
+    username = game_data["username"]
+    win = game_data["win"]
+    num_guesses = game_data["num_guesses"]
+
+    redisdb = get_redis_db()
+
+    # Set data for a game
+    redisdb.hset(game_id, "win", int(win))
+    redisdb.hset(game_id, "username", username)
+    redisdb.hset(game_id, "num_guesses", num_guesses)
+
+    # Keeps track of the score
+    redisdb.hincrby(username, "games")
+    current_score = redisdb.hget(username, "score")
+    game_score = get_score(num_guesses, win)
+
+    no_of_games = redisdb.hget(username, "games")
+    
+    avg = (int(current_score) + int(game_score)) // int(no_of_games)
+    redisdb.hset(username, "score", avg)
+
+    redisdb.zadd("players", {username: avg})
+    
+    # return format
+    leaderboard_info = {
+        "game_id": game_id, 
+        "username": username, 
+        "win": win, 
+        "num_of_guesses": num_guesses,
+        "score": game_score
+    }
+
+    return leaderboard_info
+    
+# TOP 10 Scores
+@app.route("/top-scores/", methods=["GET"])
+async def topScores():
+    
+    redisdb = get_redis_db()
+
+    arr = redisdb.zrevrange("players", 0, -1, withscores=True)
+    top_players = {}
+    i = 0
+    
+    while i < len(arr) and i < 10:
+        player = arr[i]
+        top_players[i+1] = player[0].decode("utf-8")
+        i += 1
+
+    return top_players
+
+# https://stackoverflow.com/questions/9523910/iterating-through-a-redis-sorted-set-to-update-an-active-record-table
