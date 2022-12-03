@@ -25,19 +25,6 @@ class LeaderboardInfo:
     num_guesses: int
     win: bool
     
-# Handle bad routes/errors 
-@app.errorhandler(404)
-def not_found(e):
-    return {"error": "404 The resource could not be found"}, 404
-
-@app.errorhandler(RequestSchemaValidationError) 
-def bad_request(e):
-    return {"error": str(e.validation_error)}, 400
-
-@app.errorhandler(409)
-def conflict(e):
-    return {"error": str(e)}, 409    
-
 # connect to reddis db at port 6379
 def get_redis_db():
     r = redis.Redis(host='localhost', port=6379, db=0)
@@ -66,15 +53,13 @@ def get_score(guesses, win):
 @app.route("/results/", methods=["POST"])
 @validate_request(LeaderboardInfo)
 async def score(data: LeaderboardInfo):
-    
+    redisdb = get_redis_db()
     game_data = dataclasses.asdict(data)
     
     game_id = game_data["game_id"]
     username = game_data["username"]
     win = game_data["win"]
     num_guesses = game_data["num_guesses"]
-
-    redisdb = get_redis_db()
 
     # Set data for a game
     redisdb.hset(game_id, "win", int(win))
@@ -86,9 +71,19 @@ async def score(data: LeaderboardInfo):
     current_score = redisdb.hget(username, "score")
     game_score = get_score(num_guesses, win)
 
-    no_of_games = redisdb.hget(username, "games")
+    # games for the user
+    games = redisdb.hget(username, "games")
     
-    avg = (int(current_score) + int(game_score)) // int(no_of_games)
+    if current_score is not None :
+        current_score = current_score.decode("utf-8")
+    else:
+        current_score = 0
+    if games is not None:
+        games = games.decode("utf-8")
+    else:
+        games = 1
+    
+    avg = (int(current_score) + int(game_score)) // int(games)
     redisdb.hset(username, "score", avg)
 
     redisdb.zadd("players", {username: avg})
@@ -120,5 +115,18 @@ async def topScores():
         i += 1
 
     return top_players
+
+# Handle bad routes/errors 
+@app.errorhandler(404)
+def not_found(e):
+    return {"error": "404 The resource could not be found"}, 404
+
+@app.errorhandler(RequestSchemaValidationError) 
+def bad_request(e):
+    return {"error": str(e.validation_error)}, 400
+
+@app.errorhandler(409)
+def conflict(e):
+    return {"error": str(e)}, 409  
 
 # https://stackoverflow.com/questions/9523910/iterating-through-a-redis-sorted-set-to-update-an-active-record-table
