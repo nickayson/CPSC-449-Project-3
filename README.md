@@ -3,10 +3,10 @@ This is a project for class. An API and database system that can handle requests
 In this project we create two micro services and implement reverse proxys and load balancing.
 
 ## Developed by:      
-Nicholas Ayson
-Hardik Vagrecha
-Michael Collins
-Maria Ortega
+Nicholas Ayson   
+Hardik Vagrecha   
+Michael Collins   
+Maria Ortega   
 
 
 7 PM: Tuesday Class
@@ -40,7 +40,7 @@ Section-01
 
 	Leaderboard results:              http POST http://127.0.0.1:5100/results/ game_id=[game_id] username=[username] win=[1 or 0] num_guesses=[numofguesses]
 
-	Leaderboard top-scores: 		  http GET http://127.0.0.1:5100/top-scores/
+	Leaderboard top-scores:           http GET http://127.0.0.1:5100/top-scores/
 
 
 
