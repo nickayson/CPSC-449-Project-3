@@ -1,4 +1,5 @@
 #!/bin/sh
+mkdir var
 cd var
 mkdir primary secondary third
 cd primary

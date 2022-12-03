@@ -19,9 +19,9 @@ Section-01
 
 1) Copy the nginx.txt contents into the nginx config file on your system
 2) Restart the nginx file with the nginx restart command "sudo service nginx restart"
-3) Make var folder with primary secodary and third
-4) Inside the api directory run "bin/init.sh" to initiate db
-5) run "foreman start"
+3) Make var folder with "sh ./bin/start.sh"
+4) run "foreman start"
+5) Inside the api directory run "sh ./bin/init.sh" to initiate db
 6) The servers should be running after this
 7) Open a new terminal and begin making API calls below
 
