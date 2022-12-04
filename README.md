@@ -38,9 +38,9 @@ Section-01
 
 	Get game status:                  http --auth username:password GET tuffix-vm/gameStatus/[game_id]
 
-	Leaderboard results:              http POST http://127.0.0.1:5100/results/ game_id=[game_id] username=[username] win=[1 or 0] num_guesses=[numofguesses]
+	Leaderboard results:              http POST http://127.0.0.1:5400/results/ game_id=[game_id] username=[username] win=[1 or 0] num_guesses=[numofguesses]
 
-	Leaderboard top-scores:           http GET http://127.0.0.1:5100/top-scores/
+	Leaderboard top-scores:           http GET http://127.0.0.1:5400/top-scores/
 
 
 
