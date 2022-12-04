@@ -11,8 +11,5 @@ CREATE TABLE users (
     UNIQUE(username)
 );
 
-INSERT INTO users(username, password) VALUES('one','1pass');
-INSERT INTO users(username, password) VALUES('two','2pass');
-INSERT INTO users(username, password) VALUES('three','3pass');
 
 COMMIT;
