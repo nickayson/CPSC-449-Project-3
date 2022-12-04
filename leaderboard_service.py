@@ -85,8 +85,9 @@ async def score(data: LeaderboardInfo):
     
     avg = (int(current_score) + int(game_score)) // int(games)
     redisdb.hset(username, "score", avg)
-
+    
     redisdb.zadd("players", {username: avg})
+    
     
     # return format
     leaderboard_info = {
@@ -104,11 +105,20 @@ async def score(data: LeaderboardInfo):
 async def topScores():
     
     redisdb = get_redis_db()
+    
+    #dummy data
+    # j=1
+    # while j<=100:
+    #     test = "test" + str(j)
+    #     # all tests have score 0
+    #     redisdb.zadd("players",{test: 0})
+    #     j+=1
+        
 
     arr = redisdb.zrevrange("players", 0, -1, withscores=True)
     top_players = {}
     i = 0
-    
+        
     while i < len(arr) and i < 10:
         player = arr[i]
         top_players[i+1] = player[0].decode("utf-8")
