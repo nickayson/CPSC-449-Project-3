@@ -42,6 +42,8 @@ Section-01
 
 	Leaderboard top-scores:           http GET http://127.0.0.1:5400/top-scores/
 
+In top-scores we have dummy data with scores of 0 and will get removed as you add more users with higher scores
+
 
 
 ## Online References:
